@@ -341,6 +341,50 @@ This plot gives a visual understanding of where most of the rejections occur rel
 
 h)  derive the theoretical density corresponding to each rejected random variable and try to compare it to the empirical distribution;
 
+## Part (h): Theoretical Density of Rejected Samples and Comparison
+
+The theoretical density of the rejected samples corresponds to the portion of the Cauchy proposal where samples are not accepted. Specifically, for each rejected value:
+$$
+p_{\text{reject}}(x) \propto \left(1 - \frac{\tilde{f}(x)}{k \cdot g(x)} \right) g(x)
+$$
+
+This is not a true density until we normalize it. Instead of using `trapz::trapz` (which caused an error), we’ll use base R’s `integrate()` to compute the normalization constant.
+
+```{r rejected-theoretical-density-fixed, warning=FALSE, message=FALSE}
+# Create a grid of x values for plotting
+x_vals <- seq(-10, 10, length.out = 1000)
+
+# Compute unnormalized theoretical rejection density
+f_vals <- dnorm(x_vals)
+g_vals <- dcauchy(x_vals)
+reject_density <- (1 - f_vals / (k * g_vals)) * g_vals
+
+# Normalize with base R integrate
+norm_const <- integrate(
+  function(x) (1 - dnorm(x) / (k * dcauchy(x))) * dcauchy(x),
+  lower = -Inf, upper = Inf
+)$value
+
+reject_density <- reject_density / norm_const
+
+# Plot empirical and theoretical rejection densities
+library(ggplot2)
+rejected_df <- data.frame(x = rejected)
+theoretical_df <- data.frame(x = x_vals, y = reject_density)
+
+ggplot(rejected_df, aes(x = x)) +
+  geom_histogram(aes(y = ..density..), bins = 100, fill = "lightblue", alpha = 0.6) +
+  geom_density(color = "darkblue", size = 1.2, adjust = 2) +
+  geom_line(data = theoretical_df, aes(x = x, y = y), color = "red", size = 1, linetype = "dashed") +
+  xlim(-10, 10) +
+  labs(title = "Empirical vs. Theoretical Density of Rejected Samples",
+       x = "x (Rejected Samples)",
+       y = "Density",
+       caption = "Red dashed = theoretical rejection density") +
+  theme_minimal()
+```
+
+
 i)  explain why one cannot fix in advance an (almost sure) fixed number $N$ of simulations from the auxiliary distribution necessary to get the desired number of $n=10000$ random draws form $\tilde{f}(x)$.
 
 
