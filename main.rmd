@@ -342,3 +342,54 @@ This plot gives a visual understanding of where most of the rejections occur rel
 h)  derive the theoretical density corresponding to each rejected random variable and try to compare it to the empirical distribution;
 
 i)  explain why one cannot fix in advance an (almost sure) fixed number $N$ of simulations from the auxiliary distribution necessary to get the desired number of $n=10000$ random draws form $\tilde{f}(x)$.
+
+
+
+
+## 2. MCMC
+
+\bigskip
+
+Let us consider a Markov chain $(X_t)_{t \geq 0}$ defined on the state space ${\cal S}=\{1,2,3\}$ with the following transition
+
+\begin{center} 
+\includegraphics[width=6cm]{frog.pdf} 
+\end{center}
+
+2a) Starting at time $t=0$ in the state $X_0=1$ simulate the Markov chain with distribution assigned as above for $t=1000$ consecutive times
+
+2b) compute the empirical relative frequency of the two states in your simulation 2c) repeat the simulation for 500 times and record only the final state at time $t=1000$ for each of the 500 simulated chains. Compute the relative frequency of the 500 final states. What distribution are you approximating in this way?\
+Try to formalize the difference between this point and the previous point.
+
+2d) compute the theoretical stationary distribution $\pi$ and explain how you have obtained it
+
+2e) is it well approximated by the simulated empirical relative frequencies computed in (b) and (c)?
+
+2f) what happens if we start at $t=0$ from state $X_0=2$ instead of $X_0=1$?
+
+```{r}
+#
+#
+#
+#
+#
+#
+#
+#
+#
+```
+
+\vspace{10.5cm}
+
+------------------------------------------------------------------------
+
+::: footer
+© 2024-2025 - Statistical Methods in Data Science and Laboratory II - 2024-2025
+:::
+
+```{r, warning=FALSE, error=FALSE, message=FALSE, echo=FALSE}
+cat(paste("Last update by LT:",date()))
+```
+
+
+
