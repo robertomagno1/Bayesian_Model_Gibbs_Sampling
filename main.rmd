@@ -387,7 +387,26 @@ ggplot(rejected_df, aes(x = x)) +
 
 i)  explain why one cannot fix in advance an (almost sure) fixed number $N$ of simulations from the auxiliary distribution necessary to get the desired number of $n=10000$ random draws form $\tilde{f}(x)$.
 
+## Part (i): Why One Cannot Fix in Advance an Almost Sure Number $$N$$ of Simulations
 
+In the Acceptance-Rejection (A-R) algorithm, each draw from the proposal distribution (here, standard Cauchy) has a random chance of being accepted based on the acceptance probability:
+$$
+P(\text{accept}) = \frac{1}{k}
+$$
+
+This means that each simulation from the proposal is accepted with probability $$1/k$$, independently of the others. Therefore, the number of accepted samples after $$N$$ total proposals is a **random variable** following a Binomial distribution:
+$$
+\text{Accepted} \sim \text{Binomial}(N, 1/k)
+$$
+
+As a result:
+- The number of accepted samples cannot be determined deterministically in advance.
+- For any fixed $$N$$, there's no guarantee you’ll get exactly $$n = 10000$$ accepted samples.
+- The only way to ensure exactly $$n$$ accepted samples is to **keep drawing proposals until you reach that number**, leading to a **random total number of simulations**.
+
+This is the core reason why one cannot fix an almost sure number of required proposals beforehand. The procedure must be adaptive and continue until the acceptance condition has been satisfied exactly $$n$$ times.
+
+This randomness is an intrinsic feature of the A-R algorithm and is a trade-off for its general applicability even when the normalizing constant of $$\tilde{f}(x)$$ is unknown.
 
 
 ## 2. MCMC
