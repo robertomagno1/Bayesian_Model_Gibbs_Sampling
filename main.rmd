@@ -420,15 +420,33 @@ Let us consider a Markov chain $(X_t)_{t \geq 0}$ defined on the state space ${\
 \end{center}
 
 2a) Starting at time $t=0$ in the state $X_0=1$ simulate the Markov chain with distribution assigned as above for $t=1000$ consecutive times
+```{r }
 
+```
 2b) compute the empirical relative frequency of the two states in your simulation 2c) repeat the simulation for 500 times and record only the final state at time $t=1000$ for each of the 500 simulated chains. Compute the relative frequency of the 500 final states. What distribution are you approximating in this way?\
 Try to formalize the difference between this point and the previous point.
 
+```{r }
+
+```
+
 2d) compute the theoretical stationary distribution $\pi$ and explain how you have obtained it
+
+```{r }
+
+```
 
 2e) is it well approximated by the simulated empirical relative frequencies computed in (b) and (c)?
 
+```{r }
+
+```
+
 2f) what happens if we start at $t=0$ from state $X_0=2$ instead of $X_0=1$?
+
+```{r }
+
+```
 
 ```{r}
 #
