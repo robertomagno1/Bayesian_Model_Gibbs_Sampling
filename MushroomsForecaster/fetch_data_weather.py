@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-data_pipeline.py
+data_pipeline.py --> must update API
 
 Pipeline to fetch macrofungi observations from iNaturalist and pair them with historical
 weather covariates from Open‑Meteo. Outputs clean, analysis‑ready CSV files that can be
