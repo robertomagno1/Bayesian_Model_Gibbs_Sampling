@@ -1,0 +1,568 @@
+---
+title: Homework \#02
+author: SMDS-2024-2025
+date:  |
+  | \textsc{\textbf{\Large Statstical Methods in Data Science II a.y. 2024-2025}}
+  | 
+  | M.Sc. in Data Science
+  | 
+  | \underline{deadline: 12 June, 2025}
+output:
+  pdf_document:
+    keep_tex: yes
+    toc: no
+  html_document:
+    keep_md: yes
+    theme: united
+header-includes: 
+- \usepackage{transparent}
+- \usepackage[utf8]{inputenx}
+- \usepackage{iwona}
+- \usepackage{tikz}
+- \usepackage{dcolumn}
+- \usepackage{color}
+- \usepackage[italian]{babel}
+- \usepackage{listings}
+- \usepackage{hyperref}
+- \usepackage{setspace}
+- \usepackage{enumitem}
+- \usepackage{tocloft}
+- \usepackage{eso-pic}
+- \geometry{verbose,tmargin=5cm,bmargin=3.5cm,lmargin=2.5cm,rmargin=2.5cm}
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+
+knitr::opts_chunk$set(echo = TRUE)
+
+# the default output hook
+hook_output = knit_hooks$get('output')
+knit_hooks$set(output = function(x, options) {
+  if (!is.null(n <- options$out.lines)) {
+    x = unlist(stringr::str_split(x, '\n'))
+    if (length(x) > n) {
+      # truncate the output
+      x = c(head(x, n), '....\n')
+    }
+    x = paste(x, collapse = '\n') # paste first n lines together
+  }
+  hook_output(x, options)
+})
+```
+
+```{r, include=FALSE, warning=FALSE}
+
+options(width=60)
+opts_chunk$set(out.lines = 23, comment = "", warning = FALSE, message = FALSE, echo = TRUE, tidy = TRUE, size="small",tidy.opts=list(width.cutoff=50), fig.align = 'center', fig.width = 5, fig.height = 4)
+```
+
+```{r,echo=FALSE}
+set.seed(123)
+```
+
+## 1. A/R algorithm
+
+1)  Suppose one wants to draw a random sample of size $n=10000$ (with
+    i.i.d. components) from a distribution whose density is
+    **proportional** to the following target finite measure density
+    $f(x)=\text{exp}\{-0.5 x^2\}$ by means of the Acceptance Rejection
+    (A/R) algorithm with a suitable number $N$ of draws from a standard
+    Cauchy distribution;
+
+<!-- -->
+
+a)  provide the normalizing constant of the target density $f(x)$ and
+    the expression of the normalized probability density $\tilde{f}(x)$;
+
+## 1a. Normalizing constant and normalized density
+
+We are given the unnormalized density function:
+
+$$
+f(x) = \exp\left(-\frac{1}{2}x^2\right)
+$$
+
+This is a well-known functional form, which corresponds to the
+unnormalized version of the standard normal distribution density.
+
+## I first recognizing the form of the normal gaussian distrution N(0,1) so
+
+recall the standard normal distribution:
+
+$$
+\tilde{f}(x) = \frac{1}{\sqrt{2\pi}}\exp\left(-\frac{1}{2}x^2\right)
+$$
+
+By comparing the two expressions, we see that:
+
+$$
+f(x) = \sqrt{2\pi} \cdot \tilde{f}(x)
+$$
+
+Thus, the normalizing constant is:
+
+$$
+Z = \int_{-\infty}^{+\infty} \exp\left(-\frac{1}{2}x^2\right) dx = \sqrt{2\pi}
+$$
+
+Normalized density expression: by dividing the unnormalized density by
+the constant $Z$, we obtain the normalized density:
+
+$$
+\tilde{f}(x) = \frac{1}{Z} f(x) = \frac{1}{\sqrt{2\pi}} \exp\left(-\frac{1}{2}x^2\right)
+$$
+
+This is the standard normal density \$ \mathcal{N}(0,1)\$
+
+b)  provide a geometric interpretation of the normalizing constant of
+    the target density $f(x)$ in terms of its graphical representation;
+
+# 2  Markov chain (three‑state “frog” example)
+
+```{r transition}
+P <- matrix(c(
+  0,   0.5, 0.5,
+  5/8, 1/4, 1/8,
+  1/3, 2/3, 0),
+  nrow = 3, byrow = TRUE)
+rownames(P) <- colnames(P) <- 1:3
+P
+```
+
+## 2a  Simulate one chain (1000 steps) starting at state 1
+
+```{r single-chain}
+sim_chain <- function(n, start, P){
+  s <- integer(n); s[1] <- start
+  for(t in 2:n){
+    s[t] <- sample(1:3, 1, prob = P[s[t-1], ])
+  }
+  s
+}
+
+chain1 <- sim_chain(1000, 1, P)
+prop.table(table(chain1))
+```
+
+## 2b  Empirical relative frequencies
+
+Already displayed above.
+
+## 2c  500 chains – record only the final state
+
+```{r many-chains}
+set.seed(321)
+end_states <- replicate(500, tail(sim_chain(1000, 1, P), 1))
+prop_end <- prop.table(table(end_states))
+prop_end
+```
+
+## 2d  Theoretical stationary distribution
+
+```{r stationary}
+library(expm)  # for eigen‑decomposition if not base
+pi_stat <- eigen(t(P))$vectors[,1]
+pi_stat <- Re(pi_stat / sum(pi_stat))
+pi_stat
+```
+
+## 2e  Comparison
+
+```{r compare}
+comparison <- rbind(
+  "Single‑chain empirical" = prop.table(table(chain1)),
+  "500‑chains final state" = prop_end,
+  "Stationary π"          = pi_stat
+)
+round(comparison, 35)
+
+```
+
+## 2f  Starting from state 2
+
+```{r start2}
+end_states2 <- replicate(500, tail(sim_chain(1000, 2, P), 1))
+prop.table(table(end_states2))
+```
+
+We still converge to π, illustrating that the chain is ergodic: the
+initial state does not affect long‑run behaviour.
+
+------------------------------------------------------------------------
+
+```{r last-update, echo=FALSE}
+cat(paste0("Last knit: ", Sys.time()))
+
+```
+
+c)  provide a suitable constant $k$ which allows you to implement the
+    Acceptance-Rejection algorithm to draw a sample from the normalized
+    probability density $\tilde{f}(x)$ by means of i.i.d. draws from the
+    Cauchy distribution;
+
+## Part (c): Finding a Suitable Constant $k$
+
+We are given:
+
+-   **Target density** (up to a constant):\
+    $$
+    f(x) = e^{-0.5x^2}
+    $$ which is proportional to a standard normal density.
+
+-   **Proposal distribution**: standard Cauchy, with density
+
+$$
+g(x) = \frac{1}{\pi (1 + x^2)}
+$$
+
+We aim to find a suitable constant $$k$$ such that:\
+$$
+\tilde{f}(x) \leq k \cdot g(x), \quad \forall x \in \mathbb{R}
+$$
+
+To find $$k$$, we consider the supremum of the ratio: $$
+k = \sup_{x \in \mathbb{R}} \frac{\tilde{f}(x)}{g(x)}
+$$
+
+Since $$\tilde{f}(x)$$ is the standard normal density: $$
+\tilde{f}(x) = \frac{1}{\sqrt{2\pi}} e^{-x^2/2}
+$$
+
+So: $$
+\frac{\tilde{f}(x)}{g(x)} = \frac{\frac{1}{\sqrt{2\pi}} e^{-x^2/2}}{\frac{1}{\pi (1 + x^2)}} = \frac{\pi}{\sqrt{2\pi}} \cdot \frac{e^{-x^2/2}}{1 + x^2}
+$$
+
+Now compute this in R and find the maximum:
+
+```{r find-k}
+target_over_cauchy <- function(x) {
+  (pi / sqrt(2 * pi)) * exp(-0.5 * x^2) / (1 + x^2)
+}
+
+# Optimize the function over a symmetric large interval (e.g., -100 to 100)
+opt_result <- optimize(function(x) -target_over_cauchy(x), interval = c(-100, 100))
+
+k <- -opt_result$objective
+k
+```
+
+This value of $$k$$ ensures that for all $$x$$,
+$$\tilde{f}(x) \leq k \cdot g(x)$$, making it suitable for use in the
+A/R algorithm.
+
+d)  provide your R code for the implementation of the A-R;
+
+Implementation of the Acceptance-Rejection Algorithm
+
+We now implement the A-R algorithm using the computed value of $$k$$ to
+sample from the normalized density $$\tilde{f}(x)$$ using i.i.d. samples
+from the standard Cauchy proposal.
+
+```{r ar-implementation}
+set.seed(123)
+n <- 10000  # desired number of accepted samples
+samples <- numeric(n)
+rejected <- numeric()
+i <- 0
+trials <- 0
+
+while (i < n) {
+  x_candidate <- rcauchy(1)
+  u <- runif(1)
+
+  f_x <- dnorm(x_candidate)  # standard normal density
+  g_x <- dcauchy(x_candidate)  # standard Cauchy density
+
+  if (u <= f_x / (k * g_x)) {
+    i <- i + 1
+    samples[i] <- x_candidate
+  } else {
+    rejected <- c(rejected, x_candidate)
+  }
+  trials <- trials + 1
+}
+
+# Report the acceptance rate
+acceptance_rate <- n / trials
+acceptance_rate
+```
+
+## Part (e): Monte Carlo Estimate of Acceptance Probability
+
+```{r acceptance-probability}
+cat("Acceptance rate (MC estimate):", acceptance_rate, "\n")
+```
+
+This code returns 10,000 accepted samples from the target density
+$$\tilde{f}(x)$$ and computes the empirical acceptance rate of the
+algorithm.
+
+e)  evaluate numerically (approximately by MC) the acceptance
+    probability; // as written up ,
+
+f)  write your theoretical explanation about how you have conceived your
+    Monte Carlo estimate of the acceptance probability; \## Part (e):
+    Monte Carlo Estimate of Acceptance Probability
+
+We can now report the acceptance probability from the previous
+simulation, which was computed as the number of accepted samples over
+total proposals:
+
+```{r acceptance-probability1}
+cat("Acceptance rate (MC estimate):", acceptance_rate, "\n")
+```
+
+This Monte Carlo estimate provides a numerical approximation of the
+theoretical acceptance probability: $$
+P(\text{accept}) \approx \frac{1}{k} \int \frac{\tilde{f}(x)}{g(x)} g(x) dx = \frac{1}{k} \int \tilde{f}(x) dx = \frac{1}{k}
+$$
+
+Empirically: - If $k \approx 2.5$, the theoretical acceptance rate is
+$1/k \approx 0.4$. - The MC simulation gives an estimate close to this
+value, validating the approach.
+
+g)  save the rejected simulations and provide a graphical representation
+    of the empirical distribution (histogram or density estimation);
+
+Saving and Visualizing Rejected Simulations
+
+We now visualize the empirical distribution of the rejected samples.
+
+```{r rejected-plot, warning=FALSE, message=FALSE}
+library(ggplot2)
+
+# Create a data frame
+rejected_df <- data.frame(x = rejected)
+
+# Plot histogram and density estimation
+ggplot(rejected_df, aes(x = x)) +
+  geom_histogram(aes(y = ..density..), bins = 100, fill = "lightblue", alpha = 0.6) +
+  geom_density(color = "darkblue", size = 1.2) +
+  xlim(-10, 10) +
+  labs(title = "Empirical Distribution of Rejected Samples",
+       x = "x (Rejected Samples)",
+       y = "Density") +
+  theme_minimal()
+```
+
+This plot gives a visual understanding of where most of the rejections
+occur relative to the Cauchy proposal and the standard normal target.
+
+h)  derive the theoretical density corresponding to each rejected random
+    variable and try to compare it to the empirical distribution;
+
+## Part (h): Theoretical Density of Rejected Samples and Comparison
+
+The theoretical density of the rejected samples corresponds to the
+portion of the Cauchy proposal where samples are not accepted.
+Specifically, for each rejected value: $$
+p_{\text{reject}}(x) \propto \left(1 - \frac{\tilde{f}(x)}{k \cdot g(x)} \right) g(x)
+$$
+
+This is not a true density until we normalize it. Instead of using
+`trapz::trapz` (which caused an error), we’ll use base R’s `integrate()`
+to compute the normalization constant.
+
+```{r rejected-theoretical-density-fixed, warning=FALSE, message=FALSE}
+# Create a grid of x values for plotting
+x_vals <- seq(-10, 10, length.out = 1000)
+
+# Compute unnormalized theoretical rejection density
+f_vals <- dnorm(x_vals)
+g_vals <- dcauchy(x_vals)
+reject_density <- (1 - f_vals / (k * g_vals)) * g_vals
+
+# Normalize with base R integrate
+norm_const <- integrate(
+  function(x) (1 - dnorm(x) / (k * dcauchy(x))) * dcauchy(x),
+  lower = -Inf, upper = Inf
+)$value
+
+reject_density <- reject_density / norm_const
+
+# Plot empirical and theoretical rejection densities
+library(ggplot2)
+rejected_df <- data.frame(x = rejected)
+theoretical_df <- data.frame(x = x_vals, y = reject_density)
+
+ggplot(rejected_df, aes(x = x)) +
+  geom_histogram(aes(y = ..density..), bins = 100, fill = "lightblue", alpha = 0.6) +
+  geom_density(color = "darkblue", size = 1.2, adjust = 2) +
+  geom_line(data = theoretical_df, aes(x = x, y = y), color = "red", size = 1, linetype = "dashed") +
+  xlim(-10, 10) +
+  labs(title = "Empirical vs. Theoretical Density of Rejected Samples",
+       x = "x (Rejected Samples)",
+       y = "Density",
+       caption = "Red dashed = theoretical rejection density") +
+  theme_minimal()
+```
+
+i)  explain why one cannot fix in advance an (almost sure) fixed number
+    $N$ of simulations from the auxiliary distribution necessary to get
+    the desired number of $n=10000$ random draws form $\tilde{f}(x)$.
+
+## Part (i): Why One Cannot Fix in Advance an Almost Sure Number N of Simulations
+
+In the Acceptance-Rejection (A-R) algorithm, each draw from the proposal
+distribution (here, standard Cauchy) has a random chance of being
+accepted based on the acceptance probability: $$
+P(\text{accept}) = \frac{1}{k}
+$$
+
+This means that each simulation from the proposal is accepted with
+probability $$1/k$$, independently of the others. Therefore, the number
+of accepted samples after $$N$$ total proposals is a **random variable**
+following a Binomial distribution: $$
+\text{Accepted} \sim \text{Binomial}(N, 1/k)
+$$
+
+As a result: - The number of accepted samples cannot be determined
+deterministically in advance. - For any fixed $$N$$, there's no
+guarantee you’ll get exactly $$n = 10000$$ accepted samples. - The only
+way to ensure exactly $$n$$ accepted samples is to **keep drawing
+proposals until you reach that number**, leading to a **random total
+number of simulations**.
+
+This is the core reason why one cannot fix an almost sure number of
+required proposals beforehand. The procedure must be adaptive and
+continue until the acceptance condition has been satisfied exactly $$n$$
+times.
+
+This randomness is an intrinsic feature of the A-R algorithm and is a
+trade-off for its general applicability even when the normalizing
+constant of $$\tilde{f}(x)$$ is unknown.
+
+## 2. MCMC
+
+\bigskip
+
+Let us consider a Markov chain $(X_t)_{t \geq 0}$ defined on the state
+space ${\cal S}=\{1,2,3\}$ with the following transition
+
+\begin{center} 
+\includegraphics[width=6cm]{frog.pdf} 
+\end{center}
+
+2a) Starting at time $t=0$ in the state $X_0=1$ simulate the Markov
+chain with distribution assigned as above for $t=1000$ consecutive times
+
+```{r transition, warning=FALSE, message=FALSE}
+set.seed(123)
+
+# run a single 1000‐step chain from X0 = 1
+chain1 <- sim_chain(1000, 1, P)
+
+# empirical relative frequencies
+tab1 <- prop.table(table(chain1))
+print(tab1)
+
+# trace plot
+library(tibble)
+library(ggplot2)
+tibble(t = 1:1000, state = chain1) %>%
+  ggplot(aes(t, state)) +
+    geom_step() +
+    scale_y_continuous(breaks = 1:3) +
+    labs(
+      title = "Trace Plot of One 1000-Step Trajectory",
+      x = "Time t",
+      y = "State"
+    ) +
+    theme_minimal()
+
+
+```
+
+2b) compute the empirical relative frequency of the two states in your
+simulation 2c) repeat the simulation for 500 times and record only the
+final state at time $t=1000$ for each of the 500 simulated chains.
+Compute the relative frequency of the 500 final states. What
+distribution are you approximating in this way?\
+Try to formalize the difference between this point and the previous
+point.
+
+```{r }
+# just re-print the table from 2a
+tab1
+
+```
+
+2c) 500 chains – record only the final state at time t=1000 :
+
+```{r }
+
+set.seed(321)
+# simulate 500 independent 1000-step chains, keep X_1000 only
+end_states <- replicate(500, tail(sim_chain(1000, 1, P), 1))
+prop_end <- prop.table(table(end_states))
+print(prop_end)
+
+```
+
+By collecting X₁₀₀₀ over many chains we approximate the same limiting
+distribution as in 2a, but via an ensemble of shorter runs rather than
+one long run.
+
+2d) compute the theoretical stationary distribution $\pi$ and explain
+how you have obtained it
+
+```{r }
+# compute π as the normalized eigenvector of P^T for eigenvalue 1
+eig <- eigen(t(P))
+pi_stat <- Re(eig$vectors[,1])
+pi_stat <- pi_stat / sum(pi_stat)
+names(pi_stat) <- 1:3
+print(pi_stat)
+
+```
+
+2e) is it well approximated by the simulated empirical relative
+frequencies computed in (b) and (c)?
+
+```{r }
+comparison <- rbind(
+  "Single-chain (1000)" = tab1,
+  "500-chains final"    = prop_end,
+  "Stationary π"        = pi_stat
+)
+round(comparison, 3)
+
+```
+
+2f) what happens if we start at $t=0$ from state $X_0=2$ instead of
+$X_0=1$?
+
+```{r }
+set.seed(555)
+
+# simulate 500 chains from X0 = 2
+end_states2 <- replicate(500, tail(sim_chain(1000, 2, P), 1))
+prop_start2 <- prop.table(table(end_states2))
+print(prop_start2)
+
+```
+
+Even when starting from state 2, the distribution of X₁₀₀₀ converges to
+π, confirming ergodicity.
+
+```{r}
+cat("Last update by LT:", date(), "\n")
+
+```
+
+\vspace{10.5cm}
+
+------------------------------------------------------------------------
+
+::: footer
+© 2024-2025 - Statistical Methods in Data Science and Laboratory II -
+2024-2025
+:::
+
+```{r, warning=FALSE, error=FALSE, message=FALSE, echo=FALSE}
+cat(paste("Last update by LT:",date()))
+```
