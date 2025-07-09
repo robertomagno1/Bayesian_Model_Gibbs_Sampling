@@ -1,0 +1,1078 @@
+---
+title: "Bayesian Hierarchical Analysis of Titanic Passenger Survival: A Comprehensive Statistical Investigation"
+author: "Roberto Giuggini"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output:
+  html_document:
+    theme: flatly
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    number_sections: true
+    code_folding: show
+    fig_caption: true
+  pdf_document:
+    toc: true
+    toc_depth: 3
+    keep_tex: true
+    latex_engine: xelatex
+    number_sections: true
+    fig_caption: true
+mainfont: Times New Roman
+sansfont: Times New Roman
+fontsize: 11pt
+geometry: margin=1in
+always_allow_html: true
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+# ============================================================================
+# GLOBAL CONFIGURATION AND PACKAGE LOADING
+# ============================================================================
+
+knitr::opts_chunk$set(
+  echo       = TRUE,
+  warning    = FALSE,
+  message    = FALSE,
+  cache      = FALSE,
+  cache.lazy = FALSE,
+  fig.align  = "center",
+  fig.width  = 6,
+  fig.height = 4,
+  dpi        = 300,
+  comment    = "",
+  out.width  = "70%",
+  fig.pos    = "H"
+)
+
+# Load required packages
+suppressPackageStartupMessages({
+  library(readr)
+  library(dplyr)
+  library(ggplot2)
+  library(rjags)
+  library(coda)
+  library(ggmcmc)
+  library(forcats)
+  library(knitr)
+  library(kableExtra)
+  library(bayesplot)
+  library(gridExtra)
+  library(scales)
+  library(tidyr)
+  library(lme4)
+  library(stringr)
+})
+
+# Set global ggplot theme with appropriate sizing
+theme_set(theme_minimal() + 
+  theme(
+    plot.title = element_text(size = 10, face = "bold", hjust = 0.5),
+    plot.subtitle = element_text(size = 9, hjust = 0.5),
+    axis.title = element_text(size = 9),
+    axis.text = element_text(size = 8),
+    legend.position = "bottom",
+    legend.title = element_text(size = 8, face = "bold"),
+    legend.text = element_text(size = 7),
+    strip.text = element_text(size = 8, face = "bold"),
+    panel.grid.minor = element_blank(),
+    plot.margin = margin(t = 5, r = 5, b = 5, l = 5, unit = "pt")
+  ))
+
+# Define color palette
+custom_colors <- c("#2E86AB", "#A23B72", "#F18F01", "#C73E1D")
+```
+
+# Abstract
+
+This study presents a comprehensive Bayesian hierarchical analysis of
+survival patterns among Titanic passengers. Using Markov Chain Monte
+Carlo (MCMC) methods implemented through JAGS, we investigate the
+probabilistic relationships between passenger characteristics and
+survival outcomes. The analysis employs a hierarchical logistic
+regression model with random effects for embarkation ports,
+incorporating weakly informative priors following current Bayesian best
+practices. Our findings quantify the dramatic effects of gender, social
+class, age, and family structure on survival probability, providing
+probabilistic estimates with full uncertainty quantification that
+classical frequentist approaches cannot deliver.
+
+# Introduction and Motivation
+
+The sinking of RMS Titanic on April 14-15, 1912, represents one of the
+most extensively documented maritime disasters in modern history. Beyond
+its historical significance, this tragic event provides an exceptional
+opportunity for statistical analysis, offering a rich dataset that
+allows us to investigate the factors determining human survival under
+extreme conditions.
+
+## Rationale for Bayesian Methodology
+
+The Bayesian approach offers several methodological advantages over
+classical frequentist methods for this analysis:
+
+1.  **Natural Uncertainty Quantification**: Bayesian inference provides
+    complete posterior distributions for all parameters, enabling direct
+    probability statements about parameter values.
+
+2.  **Hierarchical Structure**: The natural grouping of passengers by
+    embarkation port creates a hierarchical data structure that Bayesian
+    methods handle elegantly through random effects.
+
+3.  **Prior Information Integration**: Bayesian methods allow
+    incorporation of historical knowledge about human behavior in
+    emergency situations through informative prior distributions.
+
+4.  **Model Comparison**: Bayesian model selection criteria (DIC, WAIC)
+    provide principled approaches to compare competing hypotheses.
+
+## Research Objectives
+
+This investigation aims to:
+
+-   Quantify the probabilistic impact of demographic and socioeconomic
+    factors on survival
+-   Develop a predictive model capable of generalizing to similar
+    emergency scenarios\
+-   Demonstrate methodological superiority of Bayesian approaches
+    through rigorous validation
+-   Provide uncertainty quantification for all inferences through
+    complete posterior distributions
+
+# Dataset Description and Exploratory Analysis
+
+## Data Structure and Characteristics
+
+```{r data-loading}
+# Load and examine the Titanic dataset
+titanic_raw <- read_csv('/Users/roberto/Desktop/titanic_project/train (2).csv', 
+                        show_col_types = FALSE)
+
+# Display dataset dimensions and structure
+cat("Dataset Dimensions:", nrow(titanic_raw), "observations,", ncol(titanic_raw), "variables\n")
+glimpse(titanic_raw)
+```
+
+The dataset contains 891 passenger records with 12 variables,
+representing a subset of the complete passenger manifest. Key variables
+include survival status (binary), passenger class (ordinal), demographic
+characteristics (age, sex), family composition (siblings/spouses,
+parents/children), fare paid, and embarkation port.
+
+## Missing Data Analysis
+
+```{r missing-data-analysis}
+# Comprehensive missing data analysis
+missing_analysis <- titanic_raw %>%
+  summarise_all(~sum(is.na(.))) %>%
+  gather(Variable, Missing_Count) %>%
+  mutate(Missing_Percentage = round(Missing_Count / nrow(titanic_raw) * 100, 2)) %>%
+  arrange(desc(Missing_Count))
+
+missing_analysis %>%
+  kable(caption = "Missing Data Patterns", 
+        col.names = c("Variable", "Missing Count", "Missing %"),
+        booktabs = TRUE) %>%
+  kable_styling(latex_options = c("striped", "hold_position"))
+```
+
+The missing data pattern reveals three primary areas of concern:
+
+1.  **Cabin Information (77.1% missing)**: The high missingness rate for
+    cabin data reflects the social stratification of 1912, where
+    lower-class passengers often lacked assigned cabin numbers.
+
+2.  **Age Data (19.9% missing)**: Age information was frequently
+    unrecorded or inaccurate in historical passenger manifests.
+
+3.  **Embarkation Port (0.2% missing)**: Nearly complete information,
+    reflecting the importance of port documentation for maritime
+    records.
+
+The non-random nature of this missingness pattern suggests that Missing
+Completely At Random (MCAR) assumptions are violated, necessitating
+careful imputation strategies.
+
+## Data Preprocessing and Feature Engineering
+
+```{r data-preprocessing}
+# Comprehensive data preprocessing with theoretical justification
+titanic <- titanic_raw %>%
+  mutate(
+    # Convert survival to factor for clarity
+    Survived = factor(Survived, levels = c(0, 1), labels = c("No", "Yes")),
+    
+    # Convert passenger class to ordered factor (3rd class as reference)
+    Pclass = factor(Pclass, levels = c("3", "2", "1"), ordered = TRUE),
+    
+    # Convert sex to factor
+    Sex = factor(Sex),
+    
+    # Impute embarkation port with mode (Southampton)
+    # Justification: Southampton was the primary departure port (>70% of passengers)
+    Embarked = fct_na_value_to_level(factor(Embarked), level = "S"),
+    
+    # Impute age with median (robust to outliers)
+    # Alternative: Multiple imputation would be more sophisticated but computationally intensive
+    Age_original = Age,
+    Age = if_else(is.na(Age), median(Age, na.rm = TRUE), Age),
+    Age_imputed = is.na(Age_original),
+    
+    # Feature engineering: Family size as predictor of survival
+    # Hypothesis: Medium-sized families have optimal survival rates (cooperation vs. coordination difficulty)
+    FamilySize = SibSp + Parch + 1,
+    
+    # Categorical family size for interpretation
+    FamilyCategory = case_when(
+      FamilySize == 1 ~ "Alone",
+      FamilySize %in% 2:4 ~ "Small",
+      FamilySize >= 5 ~ "Large"
+    )
+  )
+
+# Document impact of imputation
+age_comparison <- data.frame(
+  Statistic = c("Mean", "Median", "Std Dev", "Min", "Max"),
+  Original = c(mean(titanic_raw$Age, na.rm=T), median(titanic_raw$Age, na.rm=T), 
+               sd(titanic_raw$Age, na.rm=T), min(titanic_raw$Age, na.rm=T), 
+               max(titanic_raw$Age, na.rm=T)),
+  After_Imputation = c(mean(titanic$Age), median(titanic$Age), 
+                      sd(titanic$Age), min(titanic$Age), max(titanic$Age))
+)
+
+age_comparison %>%
+  kable(digits = 2, caption = "Impact of Age Imputation on Distribution",
+        booktabs = TRUE) %>%
+  kable_styling(latex_options = c("striped", "hold_position"))
+```
+
+## Exploratory Data Analysis
+
+### Survival Patterns by Key Predictors
+
+```{r survival-analysis}
+# Calculate key survival statistics
+survival_stats <- list(
+  Overall = mean(titanic$Survived == "Yes") * 100,
+  Female = mean(titanic$Survived[titanic$Sex == "female"] == "Yes") * 100,
+  Male = mean(titanic$Survived[titanic$Sex == "male"] == "Yes") * 100,
+  First_Class = mean(titanic$Survived[titanic$Pclass == "1"] == "Yes") * 100,
+  Second_Class = mean(titanic$Survived[titanic$Pclass == "2"] == "Yes") * 100,
+  Third_Class = mean(titanic$Survived[titanic$Pclass == "3"] == "Yes") * 100
+)
+
+# Create summary table
+survival_summary <- data.frame(
+  Category = c("Overall", "Female", "Male", "First Class", "Second Class", "Third Class"),
+  Survival_Rate = round(unlist(survival_stats), 1)
+)
+
+survival_summary %>%
+  kable(caption = "Survival Rates by Passenger Category",
+        col.names = c("Category", "Survival Rate (%)"),
+        booktabs = TRUE) %>%
+  kable_styling(latex_options = c("striped", "hold_position"))
+```
+
+The exploratory analysis reveals several striking patterns:
+
+1.  **Gender Effect**: Female passengers had a 74.2% survival rate
+    compared to 18.9% for males, demonstrating the implementation of
+    "women and children first" protocols.
+
+2.  **Class Stratification**: A clear hierarchy exists with first-class
+    (63.0%), second-class (47.3%), and third-class (24.2%) passengers
+    showing dramatically different survival rates.
+
+3.  **Overall Mortality**: The 38.4% overall survival rate reflects the
+    severity of the disaster.
+
+### Visualizing Key Relationships
+
+```{r exploratory-plots, fig.height=3, fig.width=5}
+# Age distribution
+p1 <- ggplot(titanic, aes(x = Age)) +
+  geom_histogram(binwidth = 5, fill = custom_colors[1], color = "white", alpha = 0.8) +
+  geom_vline(xintercept = median(titanic$Age), linetype = "dashed", color = "red") +
+  labs(title = "Age Distribution of Titanic Passengers", 
+       x = "Age (years)", y = "Frequency") +
+  theme_minimal()
+
+# Fare distribution (log scale)
+p2 <- ggplot(titanic, aes(x = Fare + 0.1)) +
+  geom_histogram(bins = 30, fill = custom_colors[2], color = "white", alpha = 0.8) +
+  scale_x_log10(labels = dollar_format(prefix = "£")) +
+  labs(title = "Fare Distribution", 
+       x = "Fare (£, log scale)", y = "Frequency") +
+  theme_minimal()
+
+# Survival by class
+p3 <- ggplot(titanic, aes(x = Pclass, fill = Survived)) +
+  geom_bar(position = "fill", alpha = 0.8) +
+  scale_y_continuous(labels = percent_format()) +
+  scale_fill_manual(values = custom_colors[c(4, 3)]) +
+  labs(title = "Survival Rate by Passenger Class", 
+       x = "Passenger Class", y = "Proportion") +
+  theme_minimal()
+
+# Survival by sex
+p4 <- ggplot(titanic, aes(x = Sex, fill = Survived)) +
+  geom_bar(position = "fill", alpha = 0.8) +
+  scale_y_continuous(labels = percent_format()) +
+  scale_fill_manual(values = custom_colors[c(4, 3)]) +
+  labs(title = "Survival Rate by Sex", 
+       x = "Sex", y = "Proportion") +
+  theme_minimal()
+
+print(p1)
+print(p2)
+print(p3)
+print(p4)
+```
+
+# Statistical Model Specification
+
+## Theoretical Foundation
+
+### Model Choice Justification
+
+We employ a hierarchical logistic regression model for several
+theoretical reasons:
+
+1.  **Binary Outcome**: Survival is inherently binary, making the
+    Bernoulli distribution the natural choice.
+
+2.  **Logit Link Function**: The logit transformation maps probabilities
+    to the real line, enabling linear modeling of the systematic
+    component.
+
+3.  **Hierarchical Structure**: Passengers are naturally grouped by
+    embarkation port, creating correlation within groups that violates
+    independence assumptions of standard logistic regression.
+
+4.  **Random Effects**: Port-specific random intercepts capture
+    unobserved heterogeneity (cultural differences, boarding procedures,
+    social composition).
+
+## Mathematical Formulation
+
+The hierarchical logistic regression model is specified as:
+
+$$\begin{aligned}
+y_i &\sim \text{Bernoulli}(p_i) \\[0.3em]
+\text{logit}(p_i) &= \mathbf{X}_i^T\boldsymbol{\beta} + u_{j[i]} \\[0.3em]
+\text{where } \mathbf{X}_i^T\boldsymbol{\beta} &= \beta_0 + \beta_{\text{female}} \cdot \mathbb{I}(\text{Sex}_i = \text{female}) \\
+&\quad + \beta_{\text{age}} \cdot \text{Age}_i^* + \beta_{\text{fare}} \cdot \text{Fare}_i^* \\
+&\quad + \beta_{\text{family}} \cdot \text{FamSize}_i^* + \beta_{\text{family}^2} \cdot (\text{FamSize}_i^*)^2 \\
+&\quad + \beta_{\text{class1}} \cdot \mathbb{I}(\text{Pclass}_i = 1) \\
+&\quad + \beta_{\text{class2}} \cdot \mathbb{I}(\text{Pclass}_i = 2) \\[0.3em]
+u_j &\sim \mathcal{N}(0, \sigma_u^2), \quad j \in \{1, 2, 3\} \\[0.3em]
+\boldsymbol{\beta} &\sim \mathcal{N}(\mathbf{0}, 10^2 \mathbf{I}) \\[0.3em]
+\sigma_u &\sim \text{Half-Cauchy}(0, 5)
+\end{aligned}$$
+
+where asterisks denote standardized continuous variables, and $j$
+indexes the three embarkation ports (Southampton, Cherbourg,
+Queenstown).
+
+## Prior Specification and Justification
+
+### Regression Coefficients: $\boldsymbol{\beta} \sim \mathcal{N}(\mathbf{0}, 10^2 \mathbf{I})$
+
+**Theoretical Rationale:** - **Maximum Entropy Principle**: Normal
+distributions maximize entropy given fixed variance, representing
+maximal ignorance subject to constraints. - **Scale Appropriateness**:
+Standard deviation of 10 on the logit scale corresponds to odds ratios
+between $\exp(-30) \approx 10^{-13}$ and $\exp(30) \approx 10^{13}$,
+encompassing all plausible effect sizes. - **Regularization**: Provides
+implicit regularization against overfitting while remaining weakly
+informative.
+
+### Random Effect Variance: $\sigma_u \sim \text{Half-Cauchy}(0, 5)$
+
+**Methodological Innovation:** Following Gelman (2006), the Half-Cauchy
+prior for variance parameters offers: - **Heavy Tails**: Allows large
+between-group variation when supported by data - **Conservative
+Behavior**: Shrinks toward zero when data suggest little group-level
+variation - **Small Group Robustness**: Performs well with few groups
+(our case: 3 ports) - **Reference Standard**: Established as best
+practice in modern Bayesian literature
+
+## Data Preparation for MCMC
+
+```{r model-data-preparation}
+# Prepare data list for JAGS with optimal transformations
+data_list <- list(
+  N                 = nrow(titanic),
+  y                 = as.numeric(titanic$Survived == "Yes"),
+  age_std           = as.numeric(scale(titanic$Age)),
+  fare_std          = as.numeric(scale(titanic$Fare)),
+  family_size_std   = as.numeric(scale(titanic$FamilySize)),
+  family_size_sq_std = as.numeric(scale(titanic$FamilySize^2)),
+  female            = as.integer(titanic$Sex == "female"),
+  class_1           = as.integer(titanic$Pclass == "1"),
+  class_2           = as.integer(titanic$Pclass == "2"),
+  embarked_idx      = as.integer(titanic$Embarked),
+  n_embarked        = nlevels(titanic$Embarked)
+)
+
+# Display data structure
+str(data_list)
+
+# Quality checks
+cat("Quality Checks:\n")
+cat("Standardized age range:", round(range(data_list$age_std), 2), "\n")
+cat("Standardized fare range:", round(range(data_list$fare_std), 2), "\n")
+cat("Survival rate:", round(mean(data_list$y) * 100, 1), "%\n")
+```
+
+The standardization of continuous variables serves multiple purposes: 1.
+**MCMC Convergence**: Improves mixing and convergence of Markov chains
+2. **Prior Interpretability**: Makes weakly informative priors more
+meaningful 3. **Numerical Stability**: Reduces computational precision
+issues
+
+# MCMC Implementation and Model Fitting
+
+## Base Model Implementation
+
+```{r base-model-implementation, cache=FALSE}
+# Define hierarchical logistic regression model in JAGS syntax
+model_base_string <- "
+model {
+  # Likelihood specification
+  for(i in 1:N) {
+    y[i] ~ dbern(p[i])
+    logit(p[i]) <- beta0 + 
+                   beta_female * female[i] + 
+                   beta_age * age_std[i] + 
+                   beta_fare * fare_std[i] + 
+                   beta_family * family_size_std[i] + 
+                   beta_family_sq * family_size_sq_std[i] + 
+                   beta_class1 * class_1[i] + 
+                   beta_class2 * class_2[i] + 
+                   u_embarked[embarked_idx[i]]
+  }
+  
+  # Prior specifications
+  # Note: JAGS uses precision (1/variance) parameterization
+  beta0        ~ dnorm(0, 0.01)  # precision = 0.01 => variance = 100
+  beta_female  ~ dnorm(0, 0.01)
+  beta_age     ~ dnorm(0, 0.01)
+  beta_fare    ~ dnorm(0, 0.01)
+  beta_family  ~ dnorm(0, 0.01)
+  beta_family_sq ~ dnorm(0, 0.01)
+  beta_class1  ~ dnorm(0, 0.01)
+  beta_class2  ~ dnorm(0, 0.01)
+  
+  # Random effects for embarkation ports
+  for(j in 1:n_embarked) { 
+    u_embarked[j] ~ dnorm(0, tau_u) 
+  }
+  
+  # Half-Cauchy prior for random effect standard deviation
+  tau_u <- pow(sigma_u, -2)
+  sigma_u ~ dt(0, pow(5, -2), 1) T(0,)
+}
+"
+
+# Clear any existing models
+if(exists("mod_base")) rm(mod_base)
+if(exists("samples_base")) rm(samples_base)
+
+# Compile and initialize model
+set.seed(42)
+mod_base <- jags.model(
+  textConnection(model_base_string), 
+  data = data_list, 
+  n.chains = 4,
+  n.adapt = 5000,
+  quiet = TRUE
+)
+
+# Burn-in period
+update(mod_base, n.iter = 15000)
+
+# MCMC sampling
+samples_base <- coda.samples(
+  mod_base,
+  variable.names = c("beta0", "beta_female", "beta_age", "beta_fare",
+                     "beta_family", "beta_family_sq", "beta_class1", 
+                     "beta_class2", "sigma_u", "u_embarked"),
+  n.iter = 30000,
+  thin = 20
+)
+
+cat("MCMC sampling completed: 4 chains × 30,000 iterations (thinned by 20)\n")
+cat("Total posterior samples: 6,000\n")
+```
+
+## Alternative Model with Interactions
+
+```{r alternative-model, cache=FALSE}
+# Extended model with gender × class interactions
+model_alt_string <- "
+model {
+  for(i in 1:N) {
+    y[i] ~ dbern(p[i])
+    logit(p[i]) <- beta0 + 
+                   beta_female * female[i] + 
+                   beta_age * age_std[i] + 
+                   beta_fare * fare_std[i] + 
+                   beta_family * family_size_std[i] + 
+                   beta_family_sq * family_size_sq_std[i] + 
+                   beta_class1 * class_1[i] + 
+                   beta_class2 * class_2[i] + 
+                   beta_int_fem_c1 * female[i] * class_1[i] +
+                   beta_int_fem_c2 * female[i] * class_2[i] +
+                   u_embarked[embarked_idx[i]]
+  }
+  
+  # Same priors as base model plus interaction terms
+  beta0 ~ dnorm(0, 0.01); beta_female ~ dnorm(0, 0.01); beta_age ~ dnorm(0, 0.01)
+  beta_fare ~ dnorm(0, 0.01); beta_family ~ dnorm(0, 0.01); beta_family_sq ~ dnorm(0, 0.01)
+  beta_class1 ~ dnorm(0, 0.01); beta_class2 ~ dnorm(0, 0.01)
+  beta_int_fem_c1 ~ dnorm(0, 0.01); beta_int_fem_c2 ~ dnorm(0, 0.01)
+  
+  for(j in 1:n_embarked) { u_embarked[j] ~ dnorm(0, tau_u) }
+  tau_u <- pow(sigma_u, -2)
+  sigma_u ~ dt(0, pow(5, -2), 1) T(0,)
+}
+"
+
+# Clear existing alternative model
+if(exists("mod_alt")) rm(mod_alt)
+if(exists("samples_alt")) rm(samples_alt)
+
+# Compile alternative model
+mod_alt <- jags.model(
+  textConnection(model_alt_string), 
+  data = data_list, 
+  n.chains = 4, 
+  n.adapt = 5000, 
+  quiet = TRUE
+)
+
+update(mod_alt, n.iter = 15000)
+
+samples_alt <- coda.samples(
+  mod_alt,
+  variable.names = c("beta0", "beta_female", "beta_age", "beta_fare",
+                     "beta_family", "beta_family_sq", "beta_class1", 
+                     "beta_class2", "beta_int_fem_c1", "beta_int_fem_c2",
+                     "sigma_u", "u_embarked"),
+  n.iter = 30000,
+  thin = 20
+)
+```
+
+# Results and Posterior Inference
+
+## Posterior Summary Statistics
+
+```{r posterior-summary}
+# Extract posterior summaries for main parameters
+main_params <- c("beta0", "beta_female", "beta_age", "beta_fare",
+                 "beta_family", "beta_family_sq", "beta_class1", 
+                 "beta_class2", "sigma_u")
+
+posterior_summary <- summary(samples_base[, main_params])
+
+# Create formatted results table
+posterior_table <- data.frame(
+  Parameter = rownames(posterior_summary$statistics),
+  Mean = round(posterior_summary$statistics[, "Mean"], 3),
+  SD = round(posterior_summary$statistics[, "SD"], 3),
+  CI_2.5 = round(posterior_summary$quantiles[, "2.5%"], 3),
+  CI_97.5 = round(posterior_summary$quantiles[, "97.5%"], 3)
+) %>%
+  mutate(
+    Significant = ifelse(sign(CI_2.5) == sign(CI_97.5), "Yes", "No")
+  )
+
+posterior_table %>%
+  kable(caption = "Posterior Summary Statistics - Base Model",
+        col.names = c("Parameter", "Mean", "SD", "2.5%", "97.5%", "Significant"),
+        booktabs = TRUE) %>%
+  kable_styling(latex_options = c("striped", "hold_position"))
+```
+
+## Odds Ratio Interpretation
+
+```{r odds-ratios}
+# Calculate odds ratios and credible intervals
+posterior_means <- colMeans(as.matrix(samples_base[, main_params]))
+odds_ratios <- exp(posterior_means[grep("beta", names(posterior_means))])
+
+# Odds ratio credible intervals
+or_ci_lower <- exp(posterior_table$CI_2.5[1:8])
+or_ci_upper <- exp(posterior_table$CI_97.5[1:8])
+
+# Create interpretation table
+interpretation_data <- data.frame(
+  Variable = c("Intercept", "Female vs Male", "Age (per SD)", 
+               "Fare (per SD)", "Family Size (per SD)", 
+               "Family Size² (per SD)", "1st vs 3rd Class", "2nd vs 3rd Class"),
+  Odds_Ratio = round(odds_ratios, 2),
+  CI_Lower = round(or_ci_lower, 2),
+  CI_Upper = round(or_ci_upper, 2)
+)
+
+interpretation_data %>%
+  kable(caption = "Odds Ratios with 95% Credible Intervals",
+        col.names = c("Variable", "Odds Ratio", "CI Lower", "CI Upper"),
+        booktabs = TRUE) %>%
+  kable_styling(latex_options = c("striped", "hold_position"))
+
+# Key findings summary
+cat("Key Findings:\n")
+cat("Female survival odds:", round((odds_ratios[2] - 1) * 100, 0), "% higher than males\n")
+cat("1st class survival odds:", round((odds_ratios[7] - 1) * 100, 0), "% higher than 3rd class\n")
+cat("2nd class survival odds:", round((odds_ratios[8] - 1) * 100, 0), "% higher than 3rd class\n")
+```
+
+The posterior analysis reveals several statistically and substantively
+significant effects:
+
+1.  **Gender Effect**: Female passengers had approximately 11 times
+    higher odds of survival (OR = 11.06, 95% CI: [7.12, 17.21]),
+    representing the strongest predictor in the model.
+
+2.  **Class Effects**: First-class passengers had 6.2 times higher odds
+    than third-class (95% CI: [3.78, 10.14]), while second-class
+    passengers had 2.6 times higher odds (95% CI: [1.79, 3.83]).
+
+3.  **Age Effect**: Each standard deviation increase in age reduced
+    survival odds by 38% (OR = 0.62, 95% CI: [0.50, 0.77]).
+
+4.  **Family Size**: Non-linear relationship with optimal survival for
+    medium-sized families.
+
+## MCMC Convergence Diagnostics
+
+```{r convergence-diagnostics, fig.height=3}
+# Calculate convergence diagnostics
+rhat_values <- gelman.diag(samples_base[, main_params], multivariate = FALSE)$psrf
+ess_values <- effectiveSize(samples_base[, main_params])
+
+# Create diagnostics table
+convergence_diagnostics <- data.frame(
+  Parameter = names(ess_values),
+  R_hat = round(rhat_values[, 1], 4),
+  ESS = round(ess_values, 0),
+  ESS_per_chain = round(ess_values / 4, 0)
+)
+
+convergence_diagnostics %>%
+  kable(caption = "MCMC Convergence Diagnostics",
+        col.names = c("Parameter", "R̂", "ESS", "ESS per Chain"),
+        booktabs = TRUE) %>%
+  kable_styling(latex_options = c("striped", "hold_position"))
+
+# Trace plots for key parameters
+color_scheme_set("viridis")
+mcmc_trace(samples_base, pars = main_params[1:4]) +
+  ggtitle("MCMC Trace Plots") +
+  theme(legend.position = "none")
+```
+
+All convergence diagnostics indicate successful MCMC performance: - All
+R̂ values \< 1.01 (target: \< 1.05) - Effective sample sizes \> 1000 for
+all parameters (target: \> 400) - Trace plots show good mixing without
+trends or autocorrelation
+
+# Model Comparison and Selection
+
+```{r model-comparison, cache=FALSE}
+# Calculate DIC for both models
+dic_base <- dic.samples(mod_base, n.iter = 20000, type = "pD")
+dic_alt <- dic.samples(mod_alt, n.iter = 20000, type = "pD")
+
+# Extract DIC components
+dic_base_value <- sum(dic_base$deviance) + sum(dic_base$penalty)
+dic_alt_value <- sum(dic_alt$deviance) + sum(dic_alt$penalty)
+delta_dic <- dic_alt_value - dic_base_value
+
+# Model comparison table
+model_comparison <- data.frame(
+  Model = c("Base Model", "Model with Interactions"),
+  Deviance = c(sum(dic_base$deviance), sum(dic_alt$deviance)),
+  pD = c(sum(dic_base$penalty), sum(dic_alt$penalty)),
+  DIC = c(dic_base_value, dic_alt_value),
+  Delta_DIC = c(0, delta_dic)
+)
+
+model_comparison %>%
+  kable(caption = "Model Comparison via DIC",
+        digits = 2,
+        booktabs = TRUE) %>%
+  kable_styling(latex_options = c("striped", "hold_position"))
+
+# Evidence interpretation
+evidence_strength <- case_when(
+  abs(delta_dic) <= 2 ~ "Weak evidence",
+  abs(delta_dic) <= 5 ~ "Moderate evidence",
+  abs(delta_dic) <= 10 ~ "Strong evidence",
+  TRUE ~ "Very strong evidence"
+)
+
+cat("Model Selection Results:\n")
+cat("ΔDIC (Alternative - Base):", round(delta_dic, 2), "\n")
+cat("Evidence strength:", evidence_strength, "\n")
+
+# Select best model
+best_model <- if_else(delta_dic < 0, "alternative", "base")
+best_samples <- if_else(delta_dic < 0, list(samples_alt), list(samples_base))[[1]]
+
+cat("Selected model:", best_model, "\n")
+```
+
+
+
+Based on the DIC comparison, we evaluate whether adding gender × class
+interactions improves model fit. The evidence strength indicates whether
+the additional complexity is justified by improved predictive
+performance.
+
+# Model Validation and Posterior Predictive Checks
+
+```{r posterior-predictive-checks, fig.height=3}
+# Generate replicated datasets from posterior
+generate_replicated_data <- function(samples_matrix, data_list, model_type = "base") {
+  n_samples <- min(nrow(samples_matrix), 500)  # Limit for computational efficiency
+  sample_indices <- sample(nrow(samples_matrix), n_samples)
+  samples_subset <- samples_matrix[sample_indices, ]
+  
+  n_obs <- data_list$N
+  y_rep <- matrix(NA, n_samples, n_obs)
+  
+  for (i in 1:n_samples) {
+    s <- samples_subset[i, ]
+    u_effects <- s[grep("^u_embarked\\[", names(s))]
+    random_effects <- u_effects[data_list$embarked_idx]
+    
+    eta <- s["beta0"] +
+           s["beta_female"] * data_list$female +
+           s["beta_age"] * data_list$age_std +
+           s["beta_fare"] * data_list$fare_std +
+           s["beta_family"] * data_list$family_size_std +
+           s["beta_family_sq"] * data_list$family_size_sq_std +
+           s["beta_class1"] * data_list$class_1 +
+           s["beta_class2"] * data_list$class_2 +
+           random_effects
+    
+    if (model_type == "alternative") {
+      eta <- eta + s["beta_int_fem_c1"] * data_list$female * data_list$class_1 +
+                   s["beta_int_fem_c2"] * data_list$female * data_list$class_2
+    }
+    
+    p <- plogis(eta)
+    y_rep[i, ] <- rbinom(n_obs, 1, p)
+  }
+  
+  return(y_rep)
+}
+
+# Generate replicated data
+samples_matrix <- as.matrix(best_samples)
+model_type <- if_else(best_model == "alternative", "alternative", "base")
+y_rep <- generate_replicated_data(samples_matrix, data_list, model_type)
+
+# PPC for overall survival rate
+obs_survival_rate <- mean(data_list$y)
+rep_survival_rates <- rowMeans(y_rep)
+p_value_global <- mean(rep_survival_rates > obs_survival_rate)
+
+# Plot PPC
+ggplot(data.frame(rate = rep_survival_rates), aes(x = rate)) +
+  geom_histogram(aes(y = after_stat(density)), bins = 30, 
+                 fill = custom_colors[1], alpha = 0.7) +
+  geom_density(color = custom_colors[2], linewidth = 1) +
+  geom_vline(xintercept = obs_survival_rate, color = "red", 
+             linetype = "dashed", linewidth = 1) +
+  labs(title = "Posterior Predictive Check: Overall Survival Rate",
+       x = "Replicated Survival Rate", y = "Density") +
+  theme_minimal()
+
+cat("PPC Results:\n")
+cat("Observed survival rate:", round(obs_survival_rate, 3), "\n")
+cat("Bayesian p-value:", round(p_value_global, 3), "\n")
+```
+
+Posterior predictive checks assess model adequacy by comparing observed
+data to replicated datasets generated from the posterior distribution. A
+Bayesian p-value near 0.5 indicates good model fit, while values near 0
+or 1 suggest model inadequacy.
+
+# Cross-Validation and Predictive Performance
+
+```{r cross-validation}
+# Split data for cross-validation
+set.seed(123)
+train_prop <- 0.75
+train_idx <- sample(nrow(titanic), size = floor(train_prop * nrow(titanic)))
+test_idx <- setdiff(1:nrow(titanic), train_idx)
+
+# Prepare training data
+data_train <- list(
+  N = length(train_idx),
+  y = data_list$y[train_idx],
+  age_std = data_list$age_std[train_idx],
+  fare_std = data_list$fare_std[train_idx],
+  family_size_std = data_list$family_size_std[train_idx],
+  family_size_sq_std = data_list$family_size_sq_std[train_idx],
+  female = data_list$female[train_idx],
+  class_1 = data_list$class_1[train_idx],
+  class_2 = data_list$class_2[train_idx],
+  embarked_idx = data_list$embarked_idx[train_idx],
+  n_embarked = data_list$n_embarked
+)
+
+# Fit model on training data
+mod_train <- jags.model(
+  textConnection(model_base_string),
+  data = data_train,
+  n.chains = 3,
+  n.adapt = 3000,
+  quiet = TRUE
+)
+
+update(mod_train, n.iter = 8000)
+
+samples_train <- coda.samples(
+  mod_train,
+  variable.names = main_params,
+  n.iter = 15000,
+  thin = 10
+)
+
+# Generate predictions for test set
+make_predictions <- function(samples, test_data) {
+  samples_mat <- as.matrix(samples)
+  n_samples <- nrow(samples_mat)
+  n_test <- length(test_data$y)
+  
+  predictions <- matrix(NA, n_samples, n_test)
+  
+  for (i in 1:n_samples) {
+    s <- samples_mat[i, ]
+    u_effects <- s[grep("^u_embarked\\[", names(s))]
+    random_effects <- u_effects[test_data$embarked_idx]
+    
+    eta <- s["beta0"] +
+           s["beta_female"] * test_data$female +
+           s["beta_age"] * test_data$age_std +
+           s["beta_fare"] * test_data$fare_std +
+           s["beta_family"] * test_data$family_size_std +
+           s["beta_family_sq"] * test_data$family_size_sq_std +
+           s["beta_class1"] * test_data$class_1 +
+           s["beta_class2"] * test_data$class_2 +
+           random_effects
+    
+    predictions[i, ] <- plogis(eta)
+  }
+  
+  return(predictions)
+}
+
+# Prepare test data and generate predictions
+data_test <- list(
+  y = data_list$y[test_idx],
+  age_std = data_list$age_std[test_idx],
+  fare_std = data_list$fare_std[test_idx],
+  family_size_std = data_list$family_size_std[test_idx],
+  family_size_sq_std = data_list$family_size_sq_std[test_idx],
+  female = data_list$female[test_idx],
+  class_1 = data_list$class_1[test_idx],
+  class_2 = data_list$class_2[test_idx],
+  embarked_idx = data_list$embarked_idx[test_idx]
+)
+
+pred_probs <- make_predictions(samples_train, data_test)
+pred_mean <- colMeans(pred_probs)
+
+# Calculate performance metrics
+pred_binary <- ifelse(pred_mean > 0.5, 1, 0)
+accuracy <- mean(pred_binary == data_test$y)
+sensitivity <- mean(pred_binary[data_test$y == 1] == 1)
+specificity <- mean(pred_binary[data_test$y == 0] == 0)
+precision <- sum(pred_binary == 1 & data_test$y == 1) / sum(pred_binary == 1)
+f1_score <- 2 * (precision * sensitivity) / (precision + sensitivity)
+
+# Performance summary
+performance_metrics <- data.frame(
+  Metric = c("Accuracy", "Sensitivity", "Specificity", "Precision", "F1 Score"),
+  Value = round(c(accuracy, sensitivity, specificity, precision, f1_score), 3)
+)
+
+performance_metrics %>%
+  kable(caption = "Predictive Performance on Test Set",
+        booktabs = TRUE) %>%
+  kable_styling(latex_options = c("striped", "hold_position"))
+
+cat("Cross-validation Summary:\n")
+cat("Training set:", length(train_idx), "observations\n")
+cat("Test set:", length(test_idx), "observations\n")
+cat("Overall accuracy:", round(accuracy * 100, 1), "%\n")
+```
+
+# Comparison with Frequentist Methods
+
+```{r frequentist-comparison, fig.height=4}
+# Fit comparable frequentist models
+glm_model <- glm(
+  y ~ female + age_std + fare_std + family_size_std + 
+      family_size_sq_std + class_1 + class_2,
+  family = binomial(link = "logit"),
+  data = data.frame(data_list)
+)
+
+# Mixed effects model for fair comparison
+glmer_model <- glmer(
+  y ~ female + age_std + fare_std + family_size_std + 
+      family_size_sq_std + class_1 + class_2 + (1|embarked_idx),
+  family = binomial(link = "logit"),
+  data = data.frame(data_list),
+  control = glmerControl(optimizer = "bobyqa")
+)
+
+# Extract Bayesian results
+bayes_summary <- summary(samples_base[, main_params[1:8]])
+bayes_results <- data.frame(
+  Parameter = rownames(bayes_summary$statistics),
+  Estimate = bayes_summary$statistics[, "Mean"],
+  Lower_CI = bayes_summary$quantiles[, "2.5%"],
+  Upper_CI = bayes_summary$quantiles[, "97.5%"],
+  Method = "Bayesian"
+)
+
+# Extract frequentist results
+glm_confint <- suppressMessages(confint(glm_model))
+freq_results <- data.frame(
+  Parameter = paste0("beta", c("0", "_female", "_age", "_fare", "_family", 
+                              "_family_sq", "_class1", "_class2")),
+  Estimate = coef(glm_model),
+  Lower_CI = glm_confint[, 1],
+  Upper_CI = glm_confint[, 2],
+  Method = "Frequentist (GLM)"
+)
+
+# Combine results
+all_comparisons <- rbind(bayes_results, freq_results)
+
+# Comparison plot
+ggplot(all_comparisons, aes(x = Parameter, y = Estimate, color = Method)) +
+  geom_point(position = position_dodge(width = 0.5), size = 2) +
+  geom_errorbar(aes(ymin = Lower_CI, ymax = Upper_CI),
+                width = 0.2, position = position_dodge(width = 0.5)) +
+  geom_hline(yintercept = 0, linetype = "dashed", alpha = 0.5) +
+  coord_flip() +
+  scale_color_manual(values = custom_colors[1:2]) +
+  labs(title = "Bayesian vs. Frequentist Parameter Estimates",
+       x = "Parameter", y = "Coefficient Estimate") +
+  theme_minimal()
+```
+
+The comparison between Bayesian and frequentist approaches reveals high
+concordance in parameter estimates, suggesting robust inference
+regardless of methodological choice. The Bayesian approach provides
+additional advantages through:
+
+1.  **Direct Probability Statements**: Credible intervals have direct
+    probabilistic interpretation
+2.  **Hierarchical Modeling**: Natural accommodation of grouped data
+    structure
+3.  **Uncertainty Propagation**: Full uncertainty quantification through
+    posterior distributions
+4.  **Model Comparison**: Principled approach via information criteria
+
+# Discussion and Conclusions
+
+## Primary Findings
+
+This Bayesian hierarchical analysis of Titanic passenger survival has
+revealed several key insights:
+
+1.  **Gender as Primary Determinant**: The "women and children first"
+    maritime protocol was rigorously implemented, with female passengers
+    experiencing dramatically higher survival odds (OR = 11.06, 95% CI:
+    [7.12, 17.21]).
+
+2.  **Social Stratification Effects**: Clear hierarchical patterns
+    emerged, with first-class passengers having 6.2 times higher
+    survival odds than third-class passengers, reflecting the rigid
+    social structure of 1912.
+
+3.  **Age-Related Vulnerability**: Older passengers faced systematically
+    reduced survival prospects, likely reflecting physical mobility
+    constraints during evacuation.
+
+4.  **Non-linear Family Effects**: Medium-sized families showed optimal
+    survival rates, suggesting a balance between mutual assistance and
+    coordination difficulties.
+
+5.  **Port-Specific Variation**: The hierarchical model captured
+    meaningful variation across embarkation ports, indicating the
+    importance of accounting for grouped data structures.
+
+## Methodological Contributions
+
+This study demonstrates several methodological innovations:
+
+-   **Hierarchical Modeling**: Proper treatment of grouped data
+    structure through random effects
+-   **Prior Specification**: Theoretically justified prior distributions
+    following current best practices
+-   **Model Validation**: Comprehensive assessment through multiple
+    validation approaches
+-   **Uncertainty Quantification**: Complete posterior distributions
+    enabling probabilistic inference
+
+## Limitations and Future Directions
+
+Several limitations merit consideration:
+
+1.  **Missing Data Assumptions**: Simple imputation strategies may
+    introduce bias; multiple imputation would provide more robust
+    inference
+2.  **Model Selection**: Additional criteria (WAIC, LOO-CV) could
+    provide alternative perspectives on model comparison
+3.  **Causal Inference**: Observational nature precludes definitive
+    causal claims
+4.  **External Validity**: Generalization to other emergency scenarios
+    requires careful consideration
+
+## Broader Implications
+
+This analysis extends beyond historical interest, providing
+methodological insights for: - Emergency response planning and protocol
+development - Understanding human behavior under extreme stress -
+Quantifying social inequality effects in crisis situations -
+Demonstrating Bayesian methods' advantages for complex data structures
+
+The convergence of Bayesian and frequentist results strengthens
+confidence in our conclusions while highlighting the additional insights
+available through Bayesian methodology. The complete uncertainty
+quantification and natural handling of hierarchical structures make
+Bayesian approaches particularly well-suited for this type of historical
+and social scientific inquiry.
+
+# References
+
+Gelman, A. (2006). Prior distributions for variance parameters in
+hierarchical models. *Bayesian Analysis*, 1(3), 515-534.
+
+Gelman, A., Carlin, J. B., Stern, H. S., Dunson, D. B., Vehtari, A., &
+Rubin, D. B. (2013). *Bayesian Data Analysis* (3rd ed.). Chapman and
+Hall/CRC.
+
+Plummer, M. (2003). JAGS: A program for analysis of Bayesian graphical
+models using Gibbs sampling. *Proceedings of the 3rd International
+Workshop on Distributed Statistical Computing*.
+
+Spiegelhalter, D. J., Best, N. G., Carlin, B. P., & Van Der Linde, A.
+(2002). Bayesian measures of model complexity and fit. *Journal of the
+Royal Statistical Society Series B*, 64(4), 583-639.
