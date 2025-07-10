@@ -57,8 +57,12 @@ Should we include gender-class interactions? Bayesian model comparison gives us 
 
 Let me share the elegant mathematical foundation of our analysis:
 
-$$y_i \sim \text{Bernoulli}(p_i)$$
-$$\text{logit}(p_i) = \beta_0 + \beta_{\text{female}} \cdot \text{Female}_i + \beta_{\text{age}} \cdot \text{Age}_i^* + \ldots + u_{j[i]}$$
+$$
+y_i \sim \text{Bernoulli}(p_i)
+$$
+$$
+\text{logit}(p_i) = \beta_0 + \beta_{\text{female}} \cdot \text{Female}_i + \beta_{\text{age}} \cdot \text{Age}_i^* + \ldots + u_{j[i]}
+$$
 
 **But this isn't just equations – it's a story!**
 
