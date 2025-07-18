@@ -1,6 +1,6 @@
 ---
 title: "Analisi Bayesiana della Sopravvivenza dei Passeggeri del Titanic: Studio Gerarchico Completo"
-author: "Roberto Giuggini - Analisi Bayesiana Avanzata"
+author: "Roberto Magno Mazzotta - Versione in italiano"
 date: "`r format(Sys.time(), '%d %B %Y')`"
 output:
   pdf_document:
